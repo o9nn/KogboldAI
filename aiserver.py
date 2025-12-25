@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 #==================================================================#
 # KoboldAI
-# Version: 1.19.2
+# Version: 1.20.0
 # By: The KoboldAI Community
 #==================================================================#
 
@@ -82,6 +82,19 @@ try:
 except ImportError as e:
     OPENCOG_AVAILABLE = False
     logger.warning(f"OpenCog integration not available: {e}")
+
+# Kernel Integration (High-Performance C Layer)
+try:
+    from kernel_integration import get_kernel_manager, get_kernel_status, initialize_kernel
+    KERNEL_AVAILABLE = initialize_kernel()
+    if KERNEL_AVAILABLE:
+        logger.info(f"KoboldAI kernel available: {get_kernel_status()['version']}")
+    else:
+        logger.info("KoboldAI kernel not available, using Python fallback")
+except ImportError as e:
+    KERNEL_AVAILABLE = False
+    logger.info(f"Kernel integration module not available: {e}")
+
 import torch
 try:
     import intel_extension_for_pytorch as ipex
@@ -8129,6 +8142,15 @@ def show_vars():
     json_data['model_settings'] = json.loads(koboldai_vars.to_json("model_settings"))
     json_data['user_settings'] = json.loads(koboldai_vars.to_json("user_settings"))
     json_data['system_settings'] = json.loads(koboldai_vars.to_json("system_settings"))
+    # Add kernel status to system settings
+    if KERNEL_AVAILABLE:
+        json_data['kernel_status'] = get_kernel_status()
+    else:
+        json_data['kernel_status'] = {
+            "enabled": False,
+            "version": "unavailable",
+            "status": "fallback",
+        }
     return json_data
 
 @socketio.on("trigger_error")
@@ -8580,6 +8602,65 @@ def get_version_list():
                   - 1.0.0
     """
     return {"results": api_versions}
+
+
+@api_v1.get("/info/kernel")
+@api_schema_wrap
+def get_kernel_info():
+    """---
+    get:
+      summary: Kernel status
+      tags:
+        - info
+      description: |-2
+        Returns the status of the KoboldAI high-performance C kernel.
+        The kernel provides optimized operations for story management,
+        world info scanning, and token sampling.
+      responses:
+        200:
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                    description: Whether the kernel is available and active
+                  version:
+                    type: string
+                    description: Kernel version string
+                  status:
+                    type: string
+                    description: Current status (active or fallback)
+                  memory_used_mb:
+                    type: number
+                    description: Memory used by kernel in MB
+                  memory_total_mb:
+                    type: number
+                    description: Total memory pool size in MB
+                  operations:
+                    type: integer
+                    description: Number of kernel operations performed
+              example:
+                enabled: true
+                version: "1.0.0"
+                status: "active"
+                memory_used_mb: 12.5
+                memory_total_mb: 256.0
+                operations: 1523
+    """
+    if KERNEL_AVAILABLE:
+        return get_kernel_status()
+    else:
+        return {
+            "enabled": False,
+            "version": "unavailable",
+            "status": "fallback",
+            "memory_used_mb": 0,
+            "memory_total_mb": 0,
+            "operations": 0,
+        }
 
 
 @api_v1.post("/generate")
